@@ -31,7 +31,7 @@ class Aggregator:
             topic = item['channel'].decode('utf-8')
             timestamp = int(float((item['data'].decode('utf-8'))))
             group = int((timestamp - start) / self.granularity)
-            self.agg_db.zincrby('caca', 1, topic)
+            self.agg_db.zincrby(group, 1, topic)
             if group > max_group:
                 max_group = group
                 self.agg_db.publish('group', group)

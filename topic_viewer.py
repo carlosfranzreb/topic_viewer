@@ -42,17 +42,50 @@ class TopicViewer:
             remove=True  # remove container when stopped
         )
 
-    def store_groups(self):
+    def listen(self):
         """ Every time a new group starts (published in the 'group' channel)
         retrieve and store the previous group.  The counts are then reset
         to zero. Previous groups are checked again for new values, and if they
         are still empty after three checks, they are deleted. """
-        groups = list()  # group keys are stored here
+        pubsub = self.db.agg.pubsub()
+        pubsub.subscribe('group')
+        i = 0
+        for item in pubsub.listen():
+            if item['type'] == 'subscribe':
+                continue
+            new_group = int(item['data'].decode('utf-8'))
+            self.db.activity.zadd('active', {new_group: 0})
+            self.update(new_group)
+            i += 1
+            if i > 10:
+                break
+        self.stop()
+
+    def update(self, new_group):
+        """ Flush the data for all older groups and set their counts to zero.
+        If all topics of a group are zero, increment its value. Once it reaches
+        three, remove it. """
+        for key in self.db.activity.zrange('active', 0, -1):
+            group_nr = int(key.decode('utf-8'))
+            if group_nr == new_group:
+                continue
+            scores = self.db.agg.zrange(group_nr, 0, -1, withscores=True)
+            if scores[-1][1] == 0:
+                if self.db.activity.zscore('active', group_nr) < 3:
+                    self.db.activity.zincrby('active', 1, group_nr)
+                else:
+                    self.db.activity.zrem('active', group_nr)
+                    self.db.agg.zremrangebyrank(group_nr, 0, len(self.topics))
+            else:
+                self.save(group_nr)
+                self.db.agg.zadd(
+                    group_nr, {topic: 0 for topic in self.topics}, xx=True
+                )
 
     def check_aggregations(self, group):
         print(f'Group: {group}')
-        print(f'Number of members: {self.db.agg_db.zcount(group, -inf, inf)}')
-        print(f'Top 3: {self.db.agg_db.zrange(group, 0, 3, withscores=True)}')
+        print(f'Number of members: {self.db.agg.zcount(group, -inf, inf)}')
+        print(f'Top 3: {self.db.agg.zrange(group, 0, 3, withscores=True)}')
 
     def stop(self):
         """ Stop and remove all containers. """
@@ -63,11 +96,5 @@ class TopicViewer:
 
 
 if __name__ == '__main__':
-    viewer = TopicViewer(['Trump', 'covid'])
-    sleep(5)
-    viewer.check_aggregations('caca')
-    sleep(5)
-    viewer.check_aggregations('caca')
-    sleep(5)
-    viewer.check_aggregations('caca')
-    viewer.stop()
+    viewer = TopicViewer(['Spain', 'Germany'])
+    viewer.listen()
