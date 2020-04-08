@@ -1,4 +1,6 @@
-""" Launches topics and graph. """
+""" Launches topics and graph. 
+TODO: the first period is shorter than it should be.
+"""
 
 
 import docker
@@ -101,7 +103,7 @@ class TopicViewer:
                 cursor.execute(f"""
                     INSERT INTO groups (id, starting_timestamp)
                     VALUES ({group_nr}, 0)
-                """)
+                """)  # TODO: Inserting twice, idk why
                 cursor.execute(f"""
                     INSERT INTO topics (group_id, topic, value)
                     VALUES ({group_nr}, '{topic}', {update})
