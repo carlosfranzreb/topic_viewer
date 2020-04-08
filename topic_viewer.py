@@ -1,8 +1,9 @@
 """ Launches topics and graph. """
 
+
 import docker
 from redis_container import RedisDB
-from time import sleep
+from db import DB
 from math import inf
 
 
@@ -13,6 +14,7 @@ class TopicViewer:
         self.db = RedisDB('redis')
         self.topic_containers = self.start_topics()
         self.aggregator = self.start_aggregator()
+        self.persist = DB()
 
     def start_topics(self):
         """ Starts one container for each topic and returns their references
@@ -59,7 +61,6 @@ class TopicViewer:
             i += 1
             if i > 10:
                 break
-        self.stop()
 
     def update(self, new_group):
         """ Flush the data for all older groups and set their counts to zero.
@@ -82,10 +83,30 @@ class TopicViewer:
                     group_nr, {topic: 0 for topic in self.topics}, xx=True
                 )
 
-    def check_aggregations(self, group):
-        print(f'Group: {group}')
-        print(f'Number of members: {self.db.agg.zcount(group, -inf, inf)}')
-        print(f'Top 3: {self.db.agg.zrange(group, 0, 3, withscores=True)}')
+    def save(self, group_nr):
+        """ Stores updates in the DB. """
+        cursor = self.persist.get_cursor()
+        cursor.execute(f'SELECT COUNT(*) FROM groups WHERE id = {group_nr}')
+        exists = cursor.fetchone()[0]
+        if exists:
+            for topic in self.topics:
+                update = self.db.agg.zrem(group_nr, topic)
+                cursor.execute(f"""
+                    UPDATE topics SET value = value + {update}
+                    WHERE group_id = {group_nr} AND topic = '{topic}'
+                """)
+        else:
+            for topic in self.topics:
+                update = self.db.agg.zscore(group_nr, topic)
+                cursor.execute(f"""
+                    INSERT INTO groups (id, starting_timestamp)
+                    VALUES ({group_nr}, 0)
+                """)
+                cursor.execute(f"""
+                    INSERT INTO topics (group_id, topic, value)
+                    VALUES ({group_nr}, '{topic}', {update})
+                """)
+        self.persist.commit()
 
     def stop(self):
         """ Stop and remove all containers. """
@@ -94,7 +115,16 @@ class TopicViewer:
             container.stop()
         self.db.stop()
 
+    def check_db(self):
+        cursor = self.persist.get_cursor()
+        cursor.execute("select * from groups")
+        print(cursor.fetchall())
+        cursor.execute("select * from topics")
+        print(cursor.fetchall())
+
 
 if __name__ == '__main__':
     viewer = TopicViewer(['Spain', 'Germany'])
     viewer.listen()
+    viewer.check_db()
+    viewer.stop()
