@@ -12,8 +12,9 @@ class RedisDB():
             detach=True,
             remove=True  # Remove container when stopped
         )
-        self.topic_db = redis.Redis(host='localhost', port=6379, db=0)
-        self.agg_db = redis.Redis(host='localhost', port=6379, db=1)
+        self.topic = redis.Redis(host='localhost', port=6379, db=0)
+        self.agg = redis.Redis(host='localhost', port=6379, db=1)
+        self.activity = redis.Redis(host='localhost', port=6379, db=2)
 
     def stop(self):
         self.container.stop()

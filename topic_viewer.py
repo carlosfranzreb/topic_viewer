@@ -1,8 +1,11 @@
-""" Launches topics and graph. """
+""" Launches topics and graph. 
+TODO: the first period is shorter than it should be.
+"""
+
 
 import docker
 from redis_container import RedisDB
-from time import sleep
+from db import DB
 from math import inf
 
 
@@ -13,6 +16,7 @@ class TopicViewer:
         self.db = RedisDB('redis')
         self.topic_containers = self.start_topics()
         self.aggregator = self.start_aggregator()
+        self.persist = DB()
 
     def start_topics(self):
         """ Starts one container for each topic and returns their references
@@ -42,17 +46,69 @@ class TopicViewer:
             remove=True  # remove container when stopped
         )
 
-    def store_groups(self):
+    def listen(self):
         """ Every time a new group starts (published in the 'group' channel)
         retrieve and store the previous group.  The counts are then reset
         to zero. Previous groups are checked again for new values, and if they
         are still empty after three checks, they are deleted. """
-        groups = list()  # group keys are stored here
+        pubsub = self.db.agg.pubsub()
+        pubsub.subscribe('group')
+        i = 0
+        for item in pubsub.listen():
+            if item['type'] == 'subscribe':
+                continue
+            new_group = int(item['data'].decode('utf-8'))
+            self.db.activity.zadd('active', {new_group: 0})
+            self.update(new_group)
+            i += 1
+            if i > 10:
+                break
 
-    def check_aggregations(self, group):
-        print(f'Group: {group}')
-        print(f'Number of members: {self.db.agg_db.zcount(group, -inf, inf)}')
-        print(f'Top 3: {self.db.agg_db.zrange(group, 0, 3, withscores=True)}')
+    def update(self, new_group):
+        """ Flush the data for all older groups and set their counts to zero.
+        If all topics of a group are zero, increment its value. Once it reaches
+        three, remove it. """
+        for key in self.db.activity.zrange('active', 0, -1):
+            group_nr = int(key.decode('utf-8'))
+            if group_nr == new_group:
+                continue
+            scores = self.db.agg.zrange(group_nr, 0, -1, withscores=True)
+            if scores[-1][1] == 0:
+                if self.db.activity.zscore('active', group_nr) < 3:
+                    self.db.activity.zincrby('active', 1, group_nr)
+                else:
+                    self.db.activity.zrem('active', group_nr)
+                    self.db.agg.zremrangebyrank(group_nr, 0, len(self.topics))
+            else:
+                self.save(group_nr)
+                self.db.agg.zadd(
+                    group_nr, {topic: 0 for topic in self.topics}, xx=True
+                )
+
+    def save(self, group_nr):
+        """ Stores updates in the DB. """
+        cursor = self.persist.get_cursor()
+        cursor.execute(f'SELECT COUNT(*) FROM groups WHERE id = {group_nr}')
+        exists = cursor.fetchone()[0]
+        if exists:
+            for topic in self.topics:
+                update = self.db.agg.zrem(group_nr, topic)
+                cursor.execute(f"""
+                    UPDATE topics SET value = value + {update}
+                    WHERE group_id = {group_nr} AND topic = '{topic}'
+                """)
+        else:
+            for topic in self.topics:
+                update = self.db.agg.zscore(group_nr, topic)
+                cursor.execute(f"""
+                    INSERT INTO groups (id, starting_timestamp)
+                    VALUES ({group_nr}, 0)
+                """)  # TODO: Inserting twice, idk why
+                cursor.execute(f"""
+                    INSERT INTO topics (group_id, topic, value)
+                    VALUES ({group_nr}, '{topic}', {update})
+                """)
+        self.persist.commit()
 
     def stop(self):
         """ Stop and remove all containers. """
@@ -61,13 +117,16 @@ class TopicViewer:
             container.stop()
         self.db.stop()
 
+    def check_db(self):
+        cursor = self.persist.get_cursor()
+        cursor.execute("select * from groups")
+        print(cursor.fetchall())
+        cursor.execute("select * from topics")
+        print(cursor.fetchall())
+
 
 if __name__ == '__main__':
-    viewer = TopicViewer(['Trump', 'covid'])
-    sleep(5)
-    viewer.check_aggregations('caca')
-    sleep(5)
-    viewer.check_aggregations('caca')
-    sleep(5)
-    viewer.check_aggregations('caca')
+    viewer = TopicViewer(['Spain', 'Germany'])
+    viewer.listen()
+    viewer.check_db()
     viewer.stop()
