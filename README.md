@@ -35,3 +35,8 @@ which then the viewer persists in a SQLite database.
 3. Database 2, called `activity`: used by the viewer to monitor the activity of each group. Once a group has not
 received any new occurrences in the last three checks, it is removed from Redis. A check is performed every time
 a new group is created.
+
+The TopicViewer persists the topic counts per unit time in a SQLite database, which is then accessed by `vis.py`,
+to plot the topic counts.
+
+![Diagram of the architecture](topic_viewer.png)
