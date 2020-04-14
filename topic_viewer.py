@@ -18,6 +18,7 @@ class TopicViewer:
         self.topic_containers = self.start_topics()
         self.aggregator = self.start_aggregator()
         self.persist = DB()
+        self.persist.create_db()
 
     def start_topics(self):
         """ Starts one container for each topic and returns their references
