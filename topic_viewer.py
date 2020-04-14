@@ -1,12 +1,13 @@
-""" Launches topics and graph. 
+""" Launches topics and graph.
 TODO: the first period is shorter than it should be.
+TODO: works only with two topics, not more.
+    - Maybe there's a max. number of runing containers = 4
 """
 
 
 import docker
 from redis_container import RedisDB
 from db import DB
-from math import inf
 
 
 class TopicViewer:
@@ -98,12 +99,12 @@ class TopicViewer:
                     WHERE group_id = {group_nr} AND topic = '{topic}'
                 """)
         else:
+            cursor.execute(f"""
+                INSERT INTO groups (id, starting_timestamp)
+                VALUES ({group_nr}, 0)
+            """)
             for topic in self.topics:
                 update = self.db.agg.zscore(group_nr, topic)
-                cursor.execute(f"""
-                    INSERT INTO groups (id, starting_timestamp)
-                    VALUES ({group_nr}, 0)
-                """)  # TODO: Inserting twice, idk why
                 cursor.execute(f"""
                     INSERT INTO topics (group_id, topic, value)
                     VALUES ({group_nr}, '{topic}', {update})
