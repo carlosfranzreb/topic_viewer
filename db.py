@@ -6,7 +6,7 @@ from time import time
 
 
 class DB:
-    def __init__(self):
+    def create_db(self):
         """ Create connection and table in SQLite DB. """
         file = f'databases/values_{int(time())}.db'
         open(file, 'w')  # TODO: 2 files are created
@@ -20,6 +20,11 @@ class DB:
             CREATE TABLE topics
             (group_id int, topic text, value int)
         """)
+
+    def connect_db(self, creation_time):
+        file = f'databases/values_{creation_time}.db'
+        self.conn = sqlite3.connect(file)
+        self.cursor = self.conn.cursor()
 
     def get_cursor(self):
         return self.cursor
