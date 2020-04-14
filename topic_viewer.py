@@ -1,7 +1,7 @@
 """ Launches topics and graph.
 TODO: the first period is shorter than it should be.
 TODO: works only with two topics, not more.
-    - Maybe there's a max. number of runing containers = 4
+    - Because of twitter limits.
 """
 
 
@@ -55,7 +55,6 @@ class TopicViewer:
         are still empty after three checks, they are deleted. """
         pubsub = self.db.agg.pubsub()
         pubsub.subscribe('group')
-        i = 0
         for item in pubsub.listen():
             if item['type'] == 'subscribe':
                 continue
@@ -63,9 +62,6 @@ class TopicViewer:
             self.db.activity.zadd('active', {group: 0})
             self.db.activity.zadd('timestamps', {group: start})
             self.update(int(group))
-            i += 1
-            if i > 10:
-                break
 
     def update(self, new_group):
         """ Flush the data for all older groups and set their counts to zero.
@@ -96,6 +92,8 @@ class TopicViewer:
         if exists:
             for topic in self.topics:
                 update = self.db.agg.zscore(group_nr, topic)
+                if update is None:
+                    update = 0
                 cursor.execute(f"""
                     UPDATE topics SET value = value + {update}
                     WHERE group_id = {group_nr} AND topic = '{topic}'
@@ -109,6 +107,8 @@ class TopicViewer:
             """)
             for topic in self.topics:
                 update = self.db.agg.zscore(group_nr, topic)
+                if update is None:
+                    update = 0
                 cursor.execute(f"""
                     INSERT INTO topics (group_id, topic, value)
                     VALUES ({group_nr}, '{topic}', {update})
@@ -122,16 +122,10 @@ class TopicViewer:
             container.stop()
         self.db.stop()
 
-    def check_db(self):
-        cursor = self.persist.get_cursor()
-        cursor.execute("select * from groups")
-        print(cursor.fetchall())
-        cursor.execute("select * from topics")
-        print(cursor.fetchall())
-
 
 if __name__ == '__main__':
-    viewer = TopicViewer(['Spain', 'Germany'])
+    viewer = TopicViewer([
+        'covid', 'Trump'
+    ])
     viewer.listen()
-    viewer.check_db()
     viewer.stop()
