@@ -59,9 +59,10 @@ class TopicViewer:
         for item in pubsub.listen():
             if item['type'] == 'subscribe':
                 continue
-            new_group = int(item['data'].decode('utf-8'))
-            self.db.activity.zadd('active', {new_group: 0})
-            self.update(new_group)
+            group, start = item['data'].decode('utf-8').split('-')
+            self.db.activity.zadd('active', {group: 0})
+            self.db.activity.zadd('timestamps', {group: start})
+            self.update(int(group))
             i += 1
             if i > 10:
                 break
@@ -72,16 +73,16 @@ class TopicViewer:
         three, remove it. """
         for key in self.db.activity.zrange('active', 0, -1):
             group_nr = int(key.decode('utf-8'))
-            if group_nr == new_group:
+            if group_nr == new_group:  # skip new group
                 continue
             scores = self.db.agg.zrange(group_nr, 0, -1, withscores=True)
-            if scores[-1][1] == 0:
+            if scores[-1][1] == 0:  # no new values since last check
                 if self.db.activity.zscore('active', group_nr) < 3:
                     self.db.activity.zincrby('active', 1, group_nr)
-                else:
+                else:  # delete sorted set; empty for three checks.
                     self.db.activity.zrem('active', group_nr)
                     self.db.agg.zremrangebyrank(group_nr, 0, len(self.topics))
-            else:
+            else:  # new values since last check
                 self.save(group_nr)
                 self.db.agg.zadd(
                     group_nr, {topic: 0 for topic in self.topics}, xx=True
@@ -94,15 +95,17 @@ class TopicViewer:
         exists = cursor.fetchone()[0]
         if exists:
             for topic in self.topics:
-                update = self.db.agg.zrem(group_nr, topic)
+                update = self.db.agg.zscore(group_nr, topic)
                 cursor.execute(f"""
                     UPDATE topics SET value = value + {update}
                     WHERE group_id = {group_nr} AND topic = '{topic}'
                 """)
         else:
+            start = self.db.activity.zscore('timestamps', group_nr)
+            self.db.activity.zrem('timestamps', group_nr)  # only needed once
             cursor.execute(f"""
                 INSERT INTO groups (id, starting_timestamp)
-                VALUES ({group_nr}, 0)
+                VALUES ({group_nr}, {start})
             """)
             for topic in self.topics:
                 update = self.db.agg.zscore(group_nr, topic)

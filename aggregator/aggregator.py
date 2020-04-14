@@ -34,7 +34,7 @@ class Aggregator:
             self.agg_db.zincrby(group, 1, topic)
             if group > max_group:
                 max_group = group
-                self.agg_db.publish('group', group)
+                self.agg_db.publish('group', f'{group}-{timestamp}')
 
 
 if __name__ == '__main__':
