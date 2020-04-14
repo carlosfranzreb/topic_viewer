@@ -1,2 +1,4 @@
 __pycache__/
 twitter_credentials.json
+user_timeline.py
+databases/*
