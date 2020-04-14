@@ -9,7 +9,7 @@ Tool to visualize how often given keywords appear in Twitter.
         {
             "consumer_key": "",
             "consumer_secret": "",
-            "access_token_key": "-EewYI4Nll1y3LveqUyWcVTNvwLQEz6",
+            "access_token_key": "",
             "access_token_secret": ""
         }
     ```
