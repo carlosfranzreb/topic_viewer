@@ -35,4 +35,3 @@ which then the viewer persists in a SQLite database.
 3. Database 2, called `activity`: used by the viewer to monitor the activity of each group. Once a group has not
 received any new occurrences in the last three checks, it is removed from Redis. A check is performed every time
 a new group is created.
-
